@@ -1,0 +1,7 @@
+{
+  "name": "Svenska Ljud - Swedish Phoneme Trainer",
+  "description": "A language learning tool focusing on the difficult Swedish 'sj' (ɧ) and 'tj' (ɕ) sounds. Users listen to generated words and identify the correct phoneme.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
