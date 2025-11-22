@@ -15,12 +15,13 @@ interface AdminDashboardProps {
   onDelete: (id: string) => void;
   onImport: (file: File) => Promise<{ success: boolean; count: number }>;
   onExport: () => Promise<void>;
+  onLoadDefaults?: () => Promise<{ success: boolean; count: number }>;
   onBack: () => void;
   isImporting: boolean;
 }
 
 const AdminDashboard: React.FC<AdminDashboardProps> = ({ 
-  content, currentLanguage, onAdd, onUpdate, onDelete, onImport, onExport, onBack, isImporting 
+  content, currentLanguage, onAdd, onUpdate, onDelete, onImport, onExport, onLoadDefaults, onBack, isImporting 
 }) => {
   // UI State
   const [selectedItem, setSelectedItem] = useState<GameContent | null>(null);
@@ -59,6 +60,19 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           }
       } catch (error: any) {
           alert(error.message || "Import failed");
+      }
+  };
+
+  const handleDefaultsProxy = async () => {
+      if (!onLoadDefaults) return;
+      try {
+          const result = await onLoadDefaults();
+          if (result.success) {
+              showToast(`Loaded ${result.count} default items`);
+              setSelectedItem(null);
+          }
+      } catch (error: any) {
+          alert(error.message || "Failed to load defaults. Ensure default_db.json exists.");
       }
   };
 
@@ -130,6 +144,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         onBack={onBack}
         onImport={handleImportProxy}
         onExport={handleExportProxy}
+        onLoadDefaults={handleDefaultsProxy}
         isBusy={isImporting}
       />
 

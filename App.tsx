@@ -18,7 +18,7 @@ const App: React.FC = () => {
   const [currentLanguage, setCurrentLanguage] = useState('ru-RU');
   const [currentExerciseIndex, setCurrentExerciseIndex] = useState(0);
 
-  const { content, lessonPlan, setLessonPlan, isImporting, addWord, updateWord, deleteWord, importData, exportData } = useGameContent();
+  const { content, lessonPlan, setLessonPlan, isImporting, addWord, updateWord, deleteWord, importData, exportData, loadDefaults } = useGameContent();
   const activeContent = content.filter(c => c.language === currentLanguage);
 
   const startLesson = (plan: ExerciseConfig[]) => {
@@ -79,7 +79,7 @@ const App: React.FC = () => {
                     content={activeContent}
                     currentLanguage={currentLanguage}
                     onAdd={addWord} onUpdate={updateWord} onDelete={deleteWord}
-                    onImport={importData} onExport={exportData} isImporting={isImporting}
+                    onImport={importData} onExport={exportData} onLoadDefaults={loadDefaults} isImporting={isImporting}
                     onBack={() => setPhase('START_MENU')}
                 />
             </div>

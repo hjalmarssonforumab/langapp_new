@@ -1,7 +1,7 @@
 
 import { useState, useCallback } from 'react';
 import { GameContent, ExerciseConfig } from '../types';
-import { importDatabase, exportDatabase } from '../services/storageUtils';
+import { importDatabase, exportDatabase, loadDefaultDatabase } from '../services/storageUtils';
 import { generateId } from '../services/idUtils';
 
 export const useGameContent = () => {
@@ -56,6 +56,23 @@ export const useGameContent = () => {
     }
   }, []);
 
+  // --- LOAD DEFAULTS ---
+  const loadDefaults = useCallback(async () => {
+      setIsImporting(true);
+      try {
+          // Uses the DEFAULT_DB_URL from storageUtils
+          const { content: newContent, lessonPlan: newPlan } = await loadDefaultDatabase();
+          setContent(newContent);
+          setLessonPlan(newPlan);
+          return { success: true, count: newContent.length };
+      } catch (e: any) {
+          console.error("[ContentManager] Load defaults failed", e);
+          throw e;
+      } finally {
+          setIsImporting(false);
+      }
+  }, []);
+
   // --- EXPORT (IO) ---
   const exportData = useCallback(async () => {
     if (content.length === 0 && lessonPlan.length === 0) {
@@ -73,6 +90,7 @@ export const useGameContent = () => {
     updateWord,
     deleteWord,
     importData,
-    exportData
+    exportData,
+    loadDefaults
   };
 };

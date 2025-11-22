@@ -2,6 +2,13 @@
 import { GameContent, ExerciseConfig } from '../types';
 import { generateId } from './idUtils';
 
+// CONFIGURATION:
+// Replace this URL with the direct link to your JSON database file.
+// Examples:
+// - Local file in public folder: './default_db.json'
+// - Remote GitHub Raw: 'https://raw.githubusercontent.com/username/repo/main/db.json'
+export const DEFAULT_DB_URL = './default_db.json';
+
 interface SerializableGameContent extends Omit<GameContent, 'audioBlob'> {
   audioBase64: string | null;
 }
@@ -48,6 +55,82 @@ const base64ToBlob = (base64: string, mimeType: string = 'audio/webm'): Blob => 
 };
 
 /**
+ * Core logic to parse the database JSON string into usable GameContent objects.
+ */
+export const parseDatabaseContent = (jsonString: string): { content: GameContent[], lessonPlan: ExerciseConfig[] } => {
+    if (!jsonString) throw new Error("File is empty");
+
+    let parsed: any;
+    try {
+        parsed = JSON.parse(jsonString);
+    } catch (e) {
+        throw new Error("Invalid JSON format. The file might be corrupted.");
+    }
+
+    let rawContent: any[] = [];
+    let rawPlan: ExerciseConfig[] = [];
+
+    // Detect Format
+    if (Array.isArray(parsed)) {
+        // Old format: just the content array
+        rawContent = parsed;
+    } else if (parsed.content && Array.isArray(parsed.content)) {
+        // New format: Object with content and optional lessonPlan
+        rawContent = parsed.content;
+        if (parsed.lessonPlan && Array.isArray(parsed.lessonPlan)) {
+            rawPlan = parsed.lessonPlan;
+        }
+    } else {
+        throw new Error("Unknown file format.");
+    }
+
+    // --- Process Content ---
+    const seenIds = new Set<string>();
+
+    const restoredContent: GameContent[] = rawContent.map((item: any, index: number) => {
+      if (!item.word) {
+         console.warn(`Skipping invalid item at index ${index}`, item);
+         return null;
+      }
+
+      let safeId = (item.id !== undefined && item.id !== null) ? String(item.id) : generateId();
+      if (seenIds.has(safeId)) { safeId = generateId(); }
+      seenIds.add(safeId);
+
+      let restoredBlob: Blob | null = null;
+      if (item.audioBase64) {
+         try {
+             restoredBlob = base64ToBlob(item.audioBase64);
+         } catch (e) {
+             console.warn(`Could not restore audio for word: ${item.word}`);
+         }
+      }
+
+      return {
+        id: safeId,
+        word: item.word,
+        highlight: item.highlight || '',
+        phonemeDisplay: item.phonemeDisplay || '?',
+        distractors: Array.isArray(item.distractors) ? item.distractors : [], 
+        image: item.image || '',
+        isImageFile: !!item.isImageFile,
+        category: item.category || 'custom',
+        language: item.language || 'sv-SE',
+        audioBlob: restoredBlob
+      };
+    }).filter((item): item is GameContent => item !== null);
+
+    if (restoredContent.length === 0 && rawContent.length > 0) {
+        throw new Error("No valid words could be recovered from the file.");
+    }
+
+    return { 
+        content: restoredContent, 
+        lessonPlan: rawPlan 
+    };
+};
+
+/**
  * Exports the current game content and lesson plan to a JSON file.
  */
 export const exportDatabase = async (content: GameContent[], lessonPlan: ExerciseConfig[]) => {
@@ -85,8 +168,7 @@ export const exportDatabase = async (content: GameContent[], lessonPlan: Exercis
 };
 
 /**
- * Imports a JSON file and returns the parsed data.
- * Handles both old format (Array<GameContent>) and new format (DatabaseFile).
+ * Imports a JSON file from a user upload.
  */
 export const importDatabase = (file: File): Promise<{ content: GameContent[], lessonPlan: ExerciseConfig[] }> => {
   return new Promise((resolve, reject) => {
@@ -95,77 +177,8 @@ export const importDatabase = (file: File): Promise<{ content: GameContent[], le
     reader.onload = async (event) => {
       try {
         const json = event.target?.result as string;
-        if (!json) throw new Error("File is empty");
-
-        let parsed: any;
-        try {
-            parsed = JSON.parse(json);
-        } catch (e) {
-            throw new Error("Invalid JSON format. The file might be corrupted.");
-        }
-
-        let rawContent: any[] = [];
-        let rawPlan: ExerciseConfig[] = [];
-
-        // Detect Format
-        if (Array.isArray(parsed)) {
-            // Old format: just the content array
-            rawContent = parsed;
-        } else if (parsed.content && Array.isArray(parsed.content)) {
-            // New format: Object with content and optional lessonPlan
-            rawContent = parsed.content;
-            if (parsed.lessonPlan && Array.isArray(parsed.lessonPlan)) {
-                rawPlan = parsed.lessonPlan;
-            }
-        } else {
-            throw new Error("Unknown file format.");
-        }
-
-        // --- Process Content ---
-        const seenIds = new Set<string>();
-
-        const restoredContent: GameContent[] = rawContent.map((item: any, index: number) => {
-          if (!item.word) {
-             console.warn(`Skipping invalid item at index ${index}`, item);
-             return null;
-          }
-
-          let safeId = (item.id !== undefined && item.id !== null) ? String(item.id) : generateId();
-          if (seenIds.has(safeId)) { safeId = generateId(); }
-          seenIds.add(safeId);
-
-          let restoredBlob: Blob | null = null;
-          if (item.audioBase64) {
-             try {
-                 restoredBlob = base64ToBlob(item.audioBase64);
-             } catch (e) {
-                 console.warn(`Could not restore audio for word: ${item.word}`);
-             }
-          }
-
-          return {
-            id: safeId,
-            word: item.word,
-            highlight: item.highlight || '',
-            phonemeDisplay: item.phonemeDisplay || '?',
-            distractors: Array.isArray(item.distractors) ? item.distractors : [], 
-            image: item.image || '',
-            isImageFile: !!item.isImageFile,
-            category: item.category || 'custom',
-            language: item.language || 'sv-SE',
-            audioBlob: restoredBlob
-          };
-        }).filter((item): item is GameContent => item !== null);
-
-        if (restoredContent.length === 0 && rawContent.length > 0) {
-            throw new Error("No valid words could be recovered from the file.");
-        }
-
-        resolve({ 
-            content: restoredContent, 
-            lessonPlan: rawPlan 
-        });
-
+        const result = parseDatabaseContent(json);
+        resolve(result);
       } catch (error) {
         reject(error instanceof Error ? error : new Error("Unknown error during import."));
       }
@@ -174,4 +187,42 @@ export const importDatabase = (file: File): Promise<{ content: GameContent[], le
     reader.onerror = () => reject(new Error("Failed to read file. Please try again."));
     reader.readAsText(file);
   });
+};
+
+// Fallback data in case the external file is missing
+const INTERNAL_FALLBACK_DATA = {
+    content: [
+        {
+            id: "demo-1",
+            word: "Example",
+            highlight: "am",
+            phonemeDisplay: "ex",
+            distractors: ["a", "b"],
+            image: "👋",
+            isImageFile: false,
+            category: "demo",
+            language: "sv-SE",
+            audioBlob: null
+        }
+    ],
+    lessonPlan: []
+};
+
+/**
+ * Fetches and loads the default database from the public folder or a remote URL.
+ */
+export const loadDefaultDatabase = async (url: string = DEFAULT_DB_URL): Promise<{ content: GameContent[], lessonPlan: ExerciseConfig[] }> => {
+    try {
+        console.log(`Attempting to load database from: ${url}`);
+        const response = await fetch(url);
+        if (!response.ok) {
+            console.warn(`Default database file not found at ${url} (Status: ${response.status}). Loading internal fallback.`);
+            return { content: INTERNAL_FALLBACK_DATA.content as GameContent[], lessonPlan: INTERNAL_FALLBACK_DATA.lessonPlan };
+        }
+        const text = await response.text();
+        return parseDatabaseContent(text);
+    } catch (error) {
+        console.warn("Load defaults failed, using internal fallback.", error);
+        return { content: INTERNAL_FALLBACK_DATA.content as GameContent[], lessonPlan: INTERNAL_FALLBACK_DATA.lessonPlan };
+    }
 };

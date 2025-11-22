@@ -1,41 +1,15 @@
-
-import React, { useState, useRef } from 'react';
-import { Image as ImageIcon, Sparkles, Upload } from 'lucide-react';
-import { generateIconForWord } from '../../services/gemini';
+import React, { useRef } from 'react';
+import { Image as ImageIcon, Upload } from 'lucide-react';
 
 interface ImageSelectorProps {
   image: string;
   isImageFile: boolean;
   wordContext: string;
-  // NOTE: In a future refactor, we could pass the actual language state here
-  // But for now, we will rely on the text itself or just use the generic prompt update.
   onChange: (image: string, isFile: boolean) => void;
 }
 
-const ImageSelector: React.FC<ImageSelectorProps> = ({ image, isImageFile, wordContext, onChange }) => {
-  const [generating, setGenerating] = useState(false);
+const ImageSelector: React.FC<ImageSelectorProps> = ({ image, isImageFile, onChange }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const handleGenerateImage = async () => {
-    if (!wordContext) {
-      alert("Please enter a word first.");
-      return;
-    }
-    setGenerating(true);
-    try {
-      // For now we assume general or inferred language logic in prompt, 
-      // or we can default to 'the word' if language isn't strictly passed here yet.
-      // The service now accepts a language param, defaulting to Swedish if omitted.
-      // Ideally we prop drill language here too, but simple word context often works for icons.
-      const base64Image = await generateIconForWord(wordContext);
-      onChange(base64Image, true);
-    } catch (e) {
-      console.error(e);
-      alert("Failed to generate image. Please try again.");
-    } finally {
-      setGenerating(false);
-    }
-  };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -69,30 +43,14 @@ const ImageSelector: React.FC<ImageSelectorProps> = ({ image, isImageFile, wordC
               <span>No image set</span>
             </div>
           )}
-          {generating && (
-            <div className="absolute inset-0 bg-white/80 flex flex-col items-center justify-center backdrop-blur-sm z-10">
-              <Sparkles className="animate-spin text-purple-500 mb-2" size={32} />
-              <span className="text-purple-600 font-bold text-sm">Generating AI Art...</span>
-            </div>
-          )}
         </div>
 
         {/* Image Actions */}
-        <div className="grid grid-cols-2 gap-3">
-          <button 
-            type="button"
-            onClick={handleGenerateImage}
-            disabled={generating}
-            className="flex flex-col items-center justify-center p-3 bg-purple-50 border border-purple-100 hover:bg-purple-100 text-purple-700 rounded-xl transition-colors text-sm font-bold gap-1"
-          >
-            <Sparkles size={20} />
-            AI Generate
-          </button>
-          
+        <div className="flex flex-col gap-3">
           <button 
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            className="flex flex-col items-center justify-center p-3 bg-blue-50 border border-blue-100 hover:bg-blue-100 text-blue-700 rounded-xl transition-colors text-sm font-bold gap-1"
+            className="w-full flex flex-col items-center justify-center p-3 bg-blue-50 border border-blue-100 hover:bg-blue-100 text-blue-700 rounded-xl transition-colors text-sm font-bold gap-1"
           >
             <Upload size={20} />
             Upload File
