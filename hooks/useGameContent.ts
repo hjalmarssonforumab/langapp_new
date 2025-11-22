@@ -1,11 +1,12 @@
 
 import { useState, useCallback } from 'react';
-import { GameContent } from '../types';
+import { GameContent, ExerciseConfig } from '../types';
 import { importDatabase, exportDatabase } from '../services/storageUtils';
 import { generateId } from '../services/idUtils';
 
 export const useGameContent = () => {
   const [content, setContent] = useState<GameContent[]>([]);
+  const [lessonPlan, setLessonPlan] = useState<ExerciseConfig[]>([]);
   const [isImporting, setIsImporting] = useState(false);
 
   // --- CREATE ---
@@ -43,12 +44,13 @@ export const useGameContent = () => {
   const importData = useCallback(async (file: File) => {
     setIsImporting(true);
     try {
-      const newContent = await importDatabase(file);
+      const { content: newContent, lessonPlan: newPlan } = await importDatabase(file);
       setContent(newContent);
+      setLessonPlan(newPlan); // Restore lesson plan
       return { success: true, count: newContent.length };
     } catch (e: any) {
       console.error("[ContentManager] Import failed", e);
-      throw e; // Re-throw to let UI handle the specific error message
+      throw e;
     } finally {
       setIsImporting(false);
     }
@@ -56,14 +58,16 @@ export const useGameContent = () => {
 
   // --- EXPORT (IO) ---
   const exportData = useCallback(async () => {
-    if (content.length === 0) {
+    if (content.length === 0 && lessonPlan.length === 0) {
       throw new Error("Database is empty");
     }
-    await exportDatabase(content);
-  }, [content]);
+    await exportDatabase(content, lessonPlan);
+  }, [content, lessonPlan]);
 
   return {
     content,
+    lessonPlan,
+    setLessonPlan, // Exposed so LessonBuilder can update it
     isImporting,
     addWord,
     updateWord,

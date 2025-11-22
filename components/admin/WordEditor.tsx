@@ -3,24 +3,30 @@ import React, { useState, useEffect } from 'react';
 import { GameContent } from '../../types';
 import { parseBracketedWord } from '../../services/wordUtils';
 import { generateId } from '../../services/idUtils';
-import { Edit2, Plus, Save, Trash2, X, BookOpen, Image as ImageIcon, AlertCircle } from 'lucide-react';
+import { Edit2, Plus, Save, Trash2, X, BookOpen, Image as ImageIcon, AlertCircle, Globe, AlertTriangle } from 'lucide-react';
 import AudioRecorder from './AudioRecorder';
 import ImageSelector from './ImageSelector';
 
 interface WordEditorProps {
   initialData: GameContent | null;
+  currentLanguage: string;
   onSave: (data: GameContent) => void;
   onDelete: (id: string) => void;
   onCancel: () => void;
 }
 
-const COMMON_PHONEMES = ['sj', 'tj', 'sk', 'ng', 'j', 'lj', 'stj', 'skj', 'ch', 'g', 'k'];
+// Language-specific phonetic suggestions
+const PHONEME_PRESETS: Record<string, string[]> = {
+  'sv-SE': ['sj', 'tj', 'sk', 'ng', 'j', 'lj', 'stj', 'skj', 'ch', 'g', 'k'],
+  'ru-RU': ['ж', 'ш', 'щ', 'ч', 'ц', 'ы', 'э', 'ю', 'я', 'ь', 'ъ'],
+};
 
-const WordEditor: React.FC<WordEditorProps> = ({ initialData, onSave, onDelete, onCancel }) => {
+const WordEditor: React.FC<WordEditorProps> = ({ initialData, currentLanguage, onSave, onDelete, onCancel }) => {
   // Content State
   const [wordInput, setWordInput] = useState('');
   const [phonemeDisplay, setPhonemeDisplay] = useState('');
   const [distractors, setDistractors] = useState<string[]>([]);
+  const [language, setLanguage] = useState(currentLanguage);
   
   // Media State
   const [imageInput, setImageInput] = useState('');
@@ -44,6 +50,7 @@ const WordEditor: React.FC<WordEditorProps> = ({ initialData, onSave, onDelete, 
       setImageInput(initialData.image);
       setIsImageFile(initialData.isImageFile);
       setAudioBlob(initialData.audioBlob);
+      setLanguage(initialData.language || currentLanguage);
       setValidationError(null);
     } else {
       // NEW WORD STATE
@@ -53,9 +60,10 @@ const WordEditor: React.FC<WordEditorProps> = ({ initialData, onSave, onDelete, 
       setImageInput('');
       setIsImageFile(false);
       setAudioBlob(null);
+      setLanguage(currentLanguage);
       setValidationError(null);
     }
-  }, [initialData]);
+  }, [initialData, currentLanguage]);
 
   const handleSave = () => {
     setValidationError(null);
@@ -77,7 +85,8 @@ const WordEditor: React.FC<WordEditorProps> = ({ initialData, onSave, onDelete, 
       image: imageInput,
       isImageFile: isImageFile,
       audioBlob: audioBlob,
-      category: 'custom'
+      category: 'custom',
+      language: language
     };
 
     console.log("Saving item:", newItem);
@@ -101,12 +110,21 @@ const WordEditor: React.FC<WordEditorProps> = ({ initialData, onSave, onDelete, 
     e.stopPropagation();
 
     if (!initialData) return;
-
-    const confirmed = window.confirm(`Are you sure you want to delete "${initialData.word}"?`);
-    if (confirmed) {
-        onDelete(initialData.id);
-    }
+    
+    // Directly trigger parent handler without window.confirm
+    onDelete(initialData.id);
   };
+
+  const getLanguageName = (code: string) => {
+     switch(code) {
+         case 'sv-SE': return 'Swedish';
+         case 'ru-RU': return 'Russian';
+         default: return code;
+     }
+  };
+
+  // Get active suggestions based on currently selected language
+  const activePresets = PHONEME_PRESETS[language] || [];
 
   return (
     <div className="flex-1 overflow-y-auto bg-slate-50 flex flex-col h-full">
@@ -160,7 +178,7 @@ const WordEditor: React.FC<WordEditorProps> = ({ initialData, onSave, onDelete, 
         {/* Validation Error Banner */}
         {validationError && (
             <div className="bg-red-50 border-b border-red-100 px-6 py-3 flex items-center gap-2 text-red-600 text-sm font-bold animate-in slide-in-from-top-2">
-                <AlertCircle size={16} />
+                <AlertTriangle size={16} />
                 {validationError}
             </div>
         )}
@@ -178,6 +196,20 @@ const WordEditor: React.FC<WordEditorProps> = ({ initialData, onSave, onDelete, 
                         </div>
 
                         <div className="space-y-5">
+                            <div>
+                                <label className="block text-xs font-bold text-slate-500 uppercase mb-2 flex items-center gap-2">
+                                    <Globe size={12} /> Language
+                                </label>
+                                <select 
+                                    value={language}
+                                    onChange={(e) => setLanguage(e.target.value)}
+                                    className="w-full px-4 py-2 rounded-xl border border-slate-300 focus:border-blue-500 outline-none text-sm font-bold text-slate-700 bg-white"
+                                >
+                                    <option value="ru-RU">Russian (Русский)</option>
+                                    <option value="sv-SE">Swedish (Svenska)</option>
+                                </select>
+                            </div>
+
                             <div>
                                 <label className="block text-xs font-bold text-slate-500 uppercase mb-2">
                                     Word Text <span className="text-slate-300 ml-1">(Use [ ] for highlight)</span>
@@ -205,7 +237,7 @@ const WordEditor: React.FC<WordEditorProps> = ({ initialData, onSave, onDelete, 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div>
                                     <label className="block text-xs font-bold text-slate-500 uppercase mb-2">
-                                        Correct Phoneme
+                                        Correct Phoneme / Sound
                                     </label>
                                     <input 
                                         type="text"
@@ -229,7 +261,7 @@ const WordEditor: React.FC<WordEditorProps> = ({ initialData, onSave, onDelete, 
                                             <button onClick={() => removeDistractor(d)} className="text-slate-400 hover:text-red-500"><X size={14}/></button>
                                         </span>
                                     ))}
-                                    {distractors.length === 0 && <span className="text-xs text-slate-400 italic p-1">None selected (Defaults will vary)</span>}
+                                    {distractors.length === 0 && <span className="text-xs text-slate-400 italic p-1">None selected</span>}
                                 </div>
 
                                 <div className="flex gap-2 mb-3">
@@ -245,22 +277,26 @@ const WordEditor: React.FC<WordEditorProps> = ({ initialData, onSave, onDelete, 
                                         <Plus size={16} />
                                     </button>
                                 </div>
-
-                                <div>
-                                    <span className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Quick Add</span>
-                                    <div className="flex flex-wrap gap-1">
-                                        {COMMON_PHONEMES.map(p => (
-                                            <button 
-                                                key={p} type="button"
-                                                disabled={distractors.includes(p) || phonemeDisplay === p}
-                                                onClick={() => handleAddDistractor(p)}
-                                                className="px-2 py-1 text-[10px] bg-white border border-slate-200 rounded hover:border-blue-400 hover:text-blue-600 disabled:opacity-30"
-                                            >
-                                                {p}
-                                            </button>
-                                        ))}
+                                
+                                {activePresets.length > 0 && (
+                                    <div>
+                                        <span className="text-[10px] font-bold text-slate-400 uppercase block mb-1">
+                                            Quick Add ({getLanguageName(language)})
+                                        </span>
+                                        <div className="flex flex-wrap gap-1">
+                                            {activePresets.map(p => (
+                                                <button 
+                                                    key={p} type="button"
+                                                    disabled={distractors.includes(p) || phonemeDisplay === p}
+                                                    onClick={() => handleAddDistractor(p)}
+                                                    className="px-2 py-1 text-[10px] bg-white border border-slate-200 rounded hover:border-blue-400 hover:text-blue-600 disabled:opacity-30"
+                                                >
+                                                    {p}
+                                                </button>
+                                            ))}
+                                        </div>
                                     </div>
-                                </div>
+                                )}
                             </div>
                         </div>
                     </div>

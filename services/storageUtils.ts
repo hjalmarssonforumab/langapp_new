@@ -1,9 +1,15 @@
 
-import { GameContent } from '../types';
+import { GameContent, ExerciseConfig } from '../types';
 import { generateId } from './idUtils';
 
 interface SerializableGameContent extends Omit<GameContent, 'audioBlob'> {
   audioBase64: string | null;
+}
+
+interface DatabaseFile {
+  version: number;
+  content: SerializableGameContent[];
+  lessonPlan: ExerciseConfig[];
 }
 
 /**
@@ -42,9 +48,10 @@ const base64ToBlob = (base64: string, mimeType: string = 'audio/webm'): Blob => 
 };
 
 /**
- * Exports the current game content state to a JSON file downloadable by the user.
+ * Exports the current game content and lesson plan to a JSON file.
  */
-export const exportDatabase = async (content: GameContent[]) => {
+export const exportDatabase = async (content: GameContent[], lessonPlan: ExerciseConfig[]) => {
+  // Serialize Content (Convert Blobs to Base64)
   const serializableContent: SerializableGameContent[] = await Promise.all(
     content.map(async (item) => {
       let audioBase64 = null;
@@ -59,10 +66,17 @@ export const exportDatabase = async (content: GameContent[]) => {
     })
   );
 
-  const dataStr = JSON.stringify(serializableContent, null, 2);
+  // Create the combined export object
+  const exportObject: DatabaseFile = {
+    version: 2,
+    content: serializableContent,
+    lessonPlan: lessonPlan
+  };
+
+  const dataStr = JSON.stringify(exportObject, null, 2);
   const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
   
-  const exportFileDefaultName = `swedish-trainer-db-${new Date().toISOString().slice(0,10)}.json`;
+  const exportFileDefaultName = `polyglot-trainer-full-${new Date().toISOString().slice(0,10)}.json`;
   
   const linkElement = document.createElement('a');
   linkElement.setAttribute('href', dataUri);
@@ -71,9 +85,10 @@ export const exportDatabase = async (content: GameContent[]) => {
 };
 
 /**
- * Imports a JSON file and converts it back into usable GameContent.
+ * Imports a JSON file and returns the parsed data.
+ * Handles both old format (Array<GameContent>) and new format (DatabaseFile).
  */
-export const importDatabase = (file: File): Promise<GameContent[]> => {
+export const importDatabase = (file: File): Promise<{ content: GameContent[], lessonPlan: ExerciseConfig[] }> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     
@@ -89,28 +104,34 @@ export const importDatabase = (file: File): Promise<GameContent[]> => {
             throw new Error("Invalid JSON format. The file might be corrupted.");
         }
 
-        if (!Array.isArray(parsed)) {
-            throw new Error("Invalid database structure. Expected a list of items.");
+        let rawContent: any[] = [];
+        let rawPlan: ExerciseConfig[] = [];
+
+        // Detect Format
+        if (Array.isArray(parsed)) {
+            // Old format: just the content array
+            rawContent = parsed;
+        } else if (parsed.content && Array.isArray(parsed.content)) {
+            // New format: Object with content and optional lessonPlan
+            rawContent = parsed.content;
+            if (parsed.lessonPlan && Array.isArray(parsed.lessonPlan)) {
+                rawPlan = parsed.lessonPlan;
+            }
+        } else {
+            throw new Error("Unknown file format.");
         }
 
-        // Used to ensure unique IDs within this import batch
+        // --- Process Content ---
         const seenIds = new Set<string>();
 
-        const restoredContent: GameContent[] = parsed.map((item: any, index: number) => {
-          // Basic validation to ensure critical fields exist
+        const restoredContent: GameContent[] = rawContent.map((item: any, index: number) => {
           if (!item.word) {
              console.warn(`Skipping invalid item at index ${index}`, item);
              return null;
           }
 
-          // Ensure ID is a unique string. Use generateId() if missing.
-          // Check against null/undefined explicitly to allow ID '0' or numeric IDs.
           let safeId = (item.id !== undefined && item.id !== null) ? String(item.id) : generateId();
-          
-          // Handle duplicates within the file by regenerating ID
-          if (seenIds.has(safeId)) {
-              safeId = generateId(); 
-          }
+          if (seenIds.has(safeId)) { safeId = generateId(); }
           seenIds.add(safeId);
 
           let restoredBlob: Blob | null = null;
@@ -131,15 +152,20 @@ export const importDatabase = (file: File): Promise<GameContent[]> => {
             image: item.image || '',
             isImageFile: !!item.isImageFile,
             category: item.category || 'custom',
+            language: item.language || 'sv-SE',
             audioBlob: restoredBlob
           };
         }).filter((item): item is GameContent => item !== null);
 
-        if (restoredContent.length === 0 && parsed.length > 0) {
+        if (restoredContent.length === 0 && rawContent.length > 0) {
             throw new Error("No valid words could be recovered from the file.");
         }
 
-        resolve(restoredContent);
+        resolve({ 
+            content: restoredContent, 
+            lessonPlan: rawPlan 
+        });
+
       } catch (error) {
         reject(error instanceof Error ? error : new Error("Unknown error during import."));
       }

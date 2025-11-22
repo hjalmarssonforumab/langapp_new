@@ -1,8 +1,11 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { GameContent, WordChallenge } from '../types';
 import WordDisplay from './WordDisplay';
-import { Trophy, CheckCircle2, XCircle, RotateCw, Home } from 'lucide-react';
+import { CheckCircle2, XCircle, RotateCw } from 'lucide-react';
+import { useGameSession } from '../hooks/useGameSession';
+import { useAudioPlayer } from '../hooks/useAudioPlayer';
+import GameHeader from './ui/GameHeader';
 
 interface PhonemeGameProps {
   content: GameContent[];
@@ -13,114 +16,59 @@ interface PhonemeGameProps {
 const DEFAULT_DISTRACTORS = ['sj', 'tj', 'sk', 'ng'];
 
 const PhonemeGame: React.FC<PhonemeGameProps> = ({ content, onComplete, onExit }) => {
-  const [queue, setQueue] = useState<GameContent[]>([]);
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const [sessionScore, setSessionScore] = useState(0);
-  
-  // Game State for current question
+  const { currentItem, currentIndex, queue, addScore, nextItem, progress, sessionScore } = useGameSession({ content, onComplete });
+  const { isPlaying, playAudio } = useAudioPlayer();
+
+  // Local turn state
   const [hasGuessed, setHasGuessed] = useState(false);
   const [lastGuessCorrect, setLastGuessCorrect] = useState<boolean | null>(null);
   const [currentOptions, setCurrentOptions] = useState<string[]>([]);
-  
-  const [isPlaying, setIsPlaying] = useState(false);
   const [correctAnswersCount, setCorrectAnswersCount] = useState(0);
   
   const TARGET_CORRECT_ANSWERS = 5;
 
-  // Shuffle content on mount
-  useEffect(() => {
-    const shuffled = [...content].sort(() => Math.random() - 0.5);
-    setQueue(shuffled);
-    setCurrentIndex(0);
-    setCorrectAnswersCount(0);
-    setSessionScore(0);
-  }, [content]);
-
-  const currentItem = queue[currentIndex];
-
-  // Setup options for the current word
+  // Prepare Options
   useEffect(() => {
       if (!currentItem) return;
 
       let options: string[] = [];
-
-      if (currentItem.distractors && currentItem.distractors.length > 0) {
-          // Use user-defined distractors
+      if (currentItem.distractors?.length > 0) {
           options = [...currentItem.distractors, currentItem.phonemeDisplay];
       } else {
-          // Fallback: If no distractors defined, try to pick from other words in the set OR use defaults
+          // Fallback generator
           const otherPhonemes = Array.from(new Set(content.map(c => c.phonemeDisplay)))
                                      .filter(p => p !== currentItem.phonemeDisplay);
-          
-          let fillers = otherPhonemes;
-          if (fillers.length === 0) fillers = DEFAULT_DISTRACTORS.filter(d => d !== currentItem.phonemeDisplay);
-          
-          // Take up to 2 random fillers
-          fillers = fillers.sort(() => Math.random() - 0.5).slice(0, 2);
-          options = [...fillers, currentItem.phonemeDisplay];
+          let fillers = otherPhonemes.length ? otherPhonemes : DEFAULT_DISTRACTORS.filter(d => d !== currentItem.phonemeDisplay);
+          options = [...fillers.sort(() => Math.random() - 0.5).slice(0, 2), currentItem.phonemeDisplay];
       }
 
-      // Shuffle the buttons so the answer isn't always last
       setCurrentOptions(options.sort(() => Math.random() - 0.5));
-      
-      // Reset turn state
       setHasGuessed(false);
       setLastGuessCorrect(null);
-
   }, [currentItem, content]);
 
+  // Completion Check
   useEffect(() => {
     if (correctAnswersCount >= TARGET_CORRECT_ANSWERS) {
-        const timer = setTimeout(() => {
-            onComplete(sessionScore);
-        }, 1500);
-        return () => clearTimeout(timer);
+        setTimeout(() => onComplete(sessionScore), 1500);
     }
   }, [correctAnswersCount, onComplete, sessionScore]);
-
-  const playWordAudio = async () => {
-    if (!currentItem || !currentItem.audioBlob) return;
-    
-    setIsPlaying(true);
-    const url = URL.createObjectURL(currentItem.audioBlob);
-    const audio = new Audio(url);
-    audio.onended = () => setIsPlaying(false);
-    audio.play().catch(e => {
-        console.error("Play failed", e);
-        setIsPlaying(false);
-    });
-  };
 
   const handleGuess = (guessedPhoneme: string) => {
     if (hasGuessed || !currentItem) return;
 
     const isCorrect = currentItem.phonemeDisplay === guessedPhoneme;
-
     setHasGuessed(true);
     setLastGuessCorrect(isCorrect);
     
     if (isCorrect) {
-      setSessionScore(s => s + 1);
+      addScore(1);
       setCorrectAnswersCount(c => c + 1);
     }
-
-    playWordAudio();
+    playAudio(currentItem.audioBlob);
   };
 
-  const handleNext = () => {
-    if (currentIndex < queue.length - 1) {
-      setCurrentIndex(prev => prev + 1);
-    } else {
-      // Reshuffle if we ran out but haven't hit target score
-      const shuffled = [...content].sort(() => Math.random() - 0.5);
-      setQueue(shuffled);
-      setCurrentIndex(0);
-    }
-  };
-
-  if (!currentItem) {
-      return <div className="p-8 text-center text-slate-500">No words available. Please add words in Creator Mode.</div>;
-  }
+  if (!currentItem) return <div className="p-8 text-center text-slate-500">No words available.</div>;
 
   if (correctAnswersCount >= TARGET_CORRECT_ANSWERS) {
       return (
@@ -140,66 +88,54 @@ const PhonemeGame: React.FC<PhonemeGameProps> = ({ content, onComplete, onExit }
       highlight: currentItem.highlight || currentItem.word,
       suffix: suffix || "",
       correctPhoneme: currentItem.phonemeDisplay,
-      englishTranslation: "Listen to the recording"
+      englishTranslation: ""
   };
 
   return (
     <div className="w-full max-w-md flex flex-col items-center gap-8">
-      <div className="w-full flex items-center justify-between px-2">
-        <button onClick={onExit} className="text-slate-400 hover:text-slate-600"><Home size={20}/></button>
-        <div className="flex items-center gap-2 bg-white px-4 py-2 rounded-full shadow-sm border border-slate-200">
-          <Trophy className="w-4 h-4 text-yellow-500" />
-          <span className="font-bold text-slate-800">
-            {correctAnswersCount} / {TARGET_CORRECT_ANSWERS}
-          </span>
-        </div>
-      </div>
+      <GameHeader 
+        title="Phoneme Training" 
+        progress={progress} 
+        score={correctAnswersCount} 
+        total={TARGET_CORRECT_ANSWERS} 
+        onExit={onExit}
+      />
 
       <div className="w-full">
          <WordDisplay 
            challenge={challengeDisplay} 
-           onPlayAudio={playWordAudio}
+           onPlayAudio={() => playAudio(currentItem.audioBlob)}
            isPlaying={isPlaying}
          />
       </div>
 
+      {/* Feedback */}
       <div className="h-12 flex items-center justify-center w-full">
         {hasGuessed && (
-          <div className={`flex items-center gap-2 text-lg font-bold ${lastGuessCorrect ? 'text-green-600' : 'text-red-500'}`}>
-            {lastGuessCorrect ? (
-              <>
-                <CheckCircle2 size={28} />
-                <span>Correct!</span>
-              </>
-            ) : (
-              <>
-                <XCircle size={28} />
-                <span>Incorrect, it was "{currentItem.phonemeDisplay}"</span>
-              </>
-            )}
+          <div className={`flex items-center gap-2 text-lg font-bold animate-in fade-in zoom-in duration-300 ${lastGuessCorrect ? 'text-green-600' : 'text-red-500'}`}>
+            {lastGuessCorrect ? <><CheckCircle2 size={28} /><span>Correct!</span></> : <><XCircle size={28} /><span>Incorrect, it was "{currentItem.phonemeDisplay}"</span></>}
           </div>
         )}
       </div>
 
+      {/* Options Grid */}
       <div className="grid grid-cols-2 gap-4 w-full">
         {currentOptions.map((p, idx) => {
            let btnColorClass = "bg-white hover:bg-slate-50 border-slate-200 text-slate-800";
-           
            if (hasGuessed) {
               if (p === currentItem.phonemeDisplay) {
-                  btnColorClass = "bg-green-100 border-green-300 text-green-800 ring-2 ring-green-200";
-              } else if (p === (lastGuessCorrect === false ? '' : '') || (p !== currentItem.phonemeDisplay)) {
-                  btnColorClass = "bg-slate-100 border-slate-200 text-slate-400 opacity-50";
+                  btnColorClass = "bg-green-100 border-green-500 text-green-800 ring-4 ring-green-200 scale-105 shadow-lg z-10";
+              } else {
+                  btnColorClass = "bg-slate-50 border-slate-200 text-slate-300 opacity-40 scale-95";
               }
            }
-
            return (
             <button
               key={`${p}-${idx}`}
               onClick={() => handleGuess(p)}
               disabled={hasGuessed}
               className={`
-                h-24 rounded-2xl border-b-4 text-3xl font-bold flex items-center justify-center shadow-sm transition-all
+                h-24 rounded-2xl border-b-4 text-3xl font-bold flex items-center justify-center shadow-sm transition-all duration-300
                 ${btnColorClass}
                 ${!hasGuessed ? 'active:border-b-0 active:translate-y-1 active:shadow-none' : 'cursor-default'}
               `}
@@ -211,12 +147,8 @@ const PhonemeGame: React.FC<PhonemeGameProps> = ({ content, onComplete, onExit }
       </div>
 
       {hasGuessed && (
-        <button
-          onClick={handleNext}
-          className="mt-4 flex items-center gap-2 px-8 py-3 bg-slate-900 text-white rounded-full font-semibold shadow-lg hover:bg-slate-800 transition-colors hover:scale-105 active:scale-95"
-        >
-          Next Word
-          <RotateCw size={18} />
+        <button onClick={nextItem} className="mt-4 flex items-center gap-2 px-8 py-3 bg-slate-900 text-white rounded-full font-semibold shadow-lg hover:bg-slate-800 transition-colors hover:scale-105 active:scale-95 animate-in slide-in-from-bottom-2">
+          Next Word <RotateCw size={18} />
         </button>
       )}
     </div>

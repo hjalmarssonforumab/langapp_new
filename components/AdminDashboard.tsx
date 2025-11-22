@@ -5,9 +5,11 @@ import { Loader2, CheckCircle2 } from 'lucide-react';
 import AdminHeader from './admin/AdminHeader';
 import WordListSidebar from './admin/WordListSidebar';
 import WordEditor from './admin/WordEditor';
+import ConfirmModal from './ui/ConfirmModal';
 
 interface AdminDashboardProps {
   content: GameContent[];
+  currentLanguage: string; // Passed from App
   onAdd: (item: GameContent) => void;
   onUpdate: (item: GameContent) => void;
   onDelete: (id: string) => void;
@@ -18,21 +20,23 @@ interface AdminDashboardProps {
 }
 
 const AdminDashboard: React.FC<AdminDashboardProps> = ({ 
-  content, onAdd, onUpdate, onDelete, onImport, onExport, onBack, isImporting 
+  content, currentLanguage, onAdd, onUpdate, onDelete, onImport, onExport, onBack, isImporting 
 }) => {
   // UI State
   const [selectedItem, setSelectedItem] = useState<GameContent | null>(null);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
+  
+  // Confirmation Modal State (Only for Delete now)
+  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
 
-  // --- UI Handlers ---
-
+  // --- Helpers ---
   const showToast = (msg: string) => {
       setToastMsg(msg);
       setTimeout(() => setToastMsg(null), 3000);
   };
 
+  // --- Handlers: Save/Update (Immediate) ---
   const handleSaveItem = (item: GameContent) => {
-    // Logic to distinguish Add vs Update is handled here in the controller
     const isExisting = content.some(c => String(c.id) === String(item.id));
 
     if (isExisting) {
@@ -42,33 +46,43 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         onAdd(item);
         showToast("New word created");
     }
-    setSelectedItem(null); // Return to "New" state or clear selection
+    setSelectedItem(null);
   };
 
-  const handleDeleteItem = (id: string) => {
-      onDelete(id);
-      setSelectedItem(null);
-      showToast("Word permanently deleted");
-  };
-
-  const handleImportWrapper = async (file: File) => {
+  // --- Handlers: Import/Export Proxies ---
+  const handleImportProxy = async (file: File) => {
       try {
           const result = await onImport(file);
           if (result.success) {
               showToast(`Imported ${result.count} items`);
+              setSelectedItem(null);
           }
       } catch (error: any) {
           alert(error.message || "Import failed");
       }
   };
 
-  const handleExportWrapper = async () => {
+  const handleExportProxy = async () => {
       try {
           await onExport();
           showToast("Database exported");
       } catch (error: any) {
           alert(error.message || "Export failed");
       }
+  };
+
+  // --- Handlers: Delete Flow ---
+  const handleDeleteRequest = (id: string) => {
+    setDeleteTargetId(id);
+  };
+
+  const performDelete = () => {
+    if (deleteTargetId) {
+      onDelete(deleteTargetId);
+      setSelectedItem(null);
+      showToast("Word permanently deleted");
+    }
+    setDeleteTargetId(null);
   };
 
   const handlePlayAudio = (blob: Blob) => {
@@ -80,6 +94,17 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   return (
     <div className="w-full h-screen flex flex-col bg-slate-100 relative overflow-hidden">
       
+      {/* Confirmation Modal for Delete */}
+      <ConfirmModal 
+        isOpen={!!deleteTargetId}
+        title="Delete Word?"
+        message="This action cannot be undone. The word, image, and audio will be permanently removed."
+        confirmLabel="Delete"
+        isDestructive={true}
+        onConfirm={performDelete}
+        onCancel={() => setDeleteTargetId(null)}
+      />
+
       {/* Loading Overlay */}
       {isImporting && (
         <div className="absolute inset-0 bg-slate-900/60 z-50 flex flex-col items-center justify-center text-white backdrop-blur-sm animate-in fade-in">
@@ -98,19 +123,20 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </div>
       )}
 
-      {/* Header Module */}
+      {/* Header Module - Handles IO */}
       <AdminHeader 
-        wordCount={content.length} 
+        wordCount={content.length}
+        hasContent={content.length > 0} 
         onBack={onBack}
-        onImport={handleImportWrapper}
-        onExport={handleExportWrapper}
+        onImport={handleImportProxy}
+        onExport={handleExportProxy}
         isBusy={isImporting}
       />
 
       {/* Main Content Area */}
       <div className="flex flex-1 overflow-hidden">
         
-        {/* Sidebar Module */}
+        {/* Sidebar Module - Handles List */}
         <WordListSidebar 
             content={content}
             selectedId={selectedItem?.id || null}
@@ -119,12 +145,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             onPlayAudio={handlePlayAudio}
         />
 
-        {/* Editor Module */}
+        {/* Editor Module - Handles Form */}
         <WordEditor 
-            key={selectedItem ? selectedItem.id : 'new-item'} // Force reset when switching items
+            key={selectedItem ? selectedItem.id : 'new-item'}
             initialData={selectedItem}
+            currentLanguage={currentLanguage}
             onSave={handleSaveItem}
-            onDelete={handleDeleteItem}
+            onDelete={handleDeleteRequest}
             onCancel={() => setSelectedItem(null)}
         />
       </div>

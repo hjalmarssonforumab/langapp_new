@@ -1,27 +1,86 @@
 
-import React, { useState } from 'react';
-import { GameContent, ExerciseConfig, ExerciseType, MatchingDifficulty } from '../types';
-import { Plus, Trash2, Play, Shuffle, ArrowUp, ArrowDown, CheckSquare, Square, X, Search, Settings2 } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { GameContent, ExerciseConfig, ExerciseType, MatchingDifficulty, SpellingDifficulty } from '../types';
+import { Plus, Trash2, Play, Shuffle, ArrowUp, ArrowDown, CheckSquare, Square, Search, Upload, Download, AlertCircle, CheckCircle2 } from 'lucide-react';
+import ConfirmModal from './ui/ConfirmModal';
 
 interface LessonBuilderProps {
   content: GameContent[];
+  existingPlan: ExerciseConfig[];
+  onSavePlan: (plan: ExerciseConfig[]) => void;
   onStartLesson: (plan: ExerciseConfig[]) => void;
+  onImport: (file: File) => Promise<{ success: boolean; count: number }>;
+  onExport: () => Promise<void>;
   onBack: () => void;
 }
 
-const LessonBuilder: React.FC<LessonBuilderProps> = ({ content, onStartLesson, onBack }) => {
-  const [plan, setPlan] = useState<ExerciseConfig[]>([]);
+const LessonBuilder: React.FC<LessonBuilderProps> = ({ 
+  content, existingPlan, onSavePlan, onStartLesson, onImport, onExport, onBack 
+}) => {
+  const [plan, setPlan] = useState<ExerciseConfig[]>(existingPlan);
   const [editingExerciseId, setEditingExerciseId] = useState<string | null>(null);
+  const [toastMsg, setToastMsg] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Confirm Modal State
+  const [confirmState, setConfirmState] = useState<{ isOpen: boolean; type: 'IMPORT' | null }>({ isOpen: false, type: null });
+
+  // Sync internal plan with parent whenever it changes
+  useEffect(() => {
+      onSavePlan(plan);
+  }, [plan, onSavePlan]);
   
   // Filter only valid content (has audio)
   const validContent = content.filter(c => c.audioBlob !== null);
+
+  // --- Import / Export Handlers ---
+  const handleImportClick = () => {
+      setConfirmState({ isOpen: true, type: 'IMPORT' });
+  };
+
+  const performImport = () => {
+    setConfirmState({ isOpen: false, type: null });
+    if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+        fileInputRef.current.click();
+    }
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      try {
+          await onImport(file);
+          // Plan is updated via parent props update
+          showToast("Database & Lesson Plan Imported");
+      } catch (error: any) {
+          alert(error.message || "Import failed");
+      }
+    }
+  };
+
+  const handleExport = async () => {
+      try {
+          await onExport();
+          showToast("Exported successfully");
+      } catch(e) {
+          console.error(e);
+      }
+  };
+
+  const showToast = (msg: string) => {
+    setToastMsg(msg);
+    setTimeout(() => setToastMsg(null), 3000);
+  };
+
+  // --- CRUD Handlers ---
 
   const addExercise = (type: ExerciseType) => {
     const newExercise: ExerciseConfig = {
       id: Date.now().toString(),
       type,
       wordIds: [],
-      difficulty: type === 'MATCHING' ? 'LEVEL_1' : undefined
+      difficulty: 'LEVEL_1'
     };
     setPlan(prev => [...prev, newExercise]);
     setEditingExerciseId(newExercise.id);
@@ -71,19 +130,65 @@ const LessonBuilder: React.FC<LessonBuilderProps> = ({ content, onStartLesson, o
     onStartLesson(plan);
   };
 
+  const getExerciseTitle = (type: ExerciseType) => {
+      switch(type) {
+          case 'PHONEME': return 'Phoneme Training';
+          case 'MATCHING': return 'Matching Game';
+          case 'SPELLING': return 'Spelling Practice';
+      }
+  };
+
+  const getExerciseColor = (type: ExerciseType) => {
+      switch(type) {
+          case 'PHONEME': return 'bg-blue-500';
+          case 'MATCHING': return 'bg-purple-500';
+          case 'SPELLING': return 'bg-orange-500';
+      }
+  };
+
   return (
-    <div className="w-full max-w-6xl mx-auto flex gap-6 h-[calc(100vh-100px)]">
+    <div className="w-full max-w-6xl mx-auto flex gap-6 h-[calc(100vh-100px)] relative">
       
+      <input type="file" ref={fileInputRef} className="hidden" accept=".json" onChange={handleFileChange} />
+      
+      {/* Toast */}
+      {toastMsg && (
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 bg-slate-800 text-white px-6 py-3 rounded-full shadow-xl flex items-center gap-2 font-bold text-sm border border-slate-700 animate-in fade-in slide-in-from-top-4">
+            <CheckCircle2 size={18} className="text-green-400"/>
+            {toastMsg}
+        </div>
+      )}
+
+      {/* Confirmation Modal */}
+      <ConfirmModal 
+        isOpen={confirmState.isOpen}
+        title="Overwrite Everything?"
+        message="Importing will overwrite your current database AND lesson plan. Unsaved changes will be lost."
+        confirmLabel="Import & Overwrite"
+        isDestructive={true}
+        onConfirm={performImport}
+        onCancel={() => setConfirmState({ isOpen: false, type: null })}
+      />
+
       {/* LEFT: Playlist Builder */}
       <div className="flex-1 flex flex-col bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
         <div className="p-6 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
           <div>
             <h2 className="text-2xl font-bold text-slate-800">Lesson Builder</h2>
-            <p className="text-slate-500 text-sm">Create a sequence of exercises.</p>
+            <p className="text-slate-500 text-sm">Create and save your sequence.</p>
           </div>
           <div className="flex gap-2">
+            
+            {/* IO Buttons */}
+            <button onClick={handleImportClick} className="p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-200 rounded-lg transition-colors" title="Import Lesson & DB">
+                <Upload size={20} />
+            </button>
+            <button onClick={handleExport} className="p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-200 rounded-lg transition-colors mr-2" title="Save/Export Lesson & DB">
+                <Download size={20} />
+            </button>
+
             <button onClick={onBack} className="px-4 py-2 text-slate-500 font-bold hover:bg-slate-200 rounded-lg">
-              Cancel
+              Exit
             </button>
             <button 
               onClick={handleStart}
@@ -119,15 +224,15 @@ const LessonBuilder: React.FC<LessonBuilderProps> = ({ content, onStartLesson, o
                 >
                   <div className={`
                     w-10 h-10 rounded-lg flex items-center justify-center font-bold text-white shrink-0
-                    ${ex.type === 'PHONEME' ? 'bg-blue-500' : 'bg-purple-500'}
+                    ${getExerciseColor(ex.type)}
                   `}>
                     {index + 1}
                   </div>
                   <div>
                     <h3 className="font-bold text-slate-800 flex items-center gap-2">
-                      {ex.type === 'PHONEME' ? 'Phoneme Training' : 'Matching Game'}
-                      {ex.type === 'MATCHING' && (
-                          <span className="text-[10px] px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full uppercase tracking-wider">
+                      {getExerciseTitle(ex.type)}
+                      {(ex.type === 'MATCHING' || ex.type === 'SPELLING') && (
+                          <span className={`text-[10px] px-2 py-0.5 rounded-full uppercase tracking-wider ${ex.type === 'MATCHING' ? 'bg-purple-100 text-purple-700' : 'bg-orange-100 text-orange-700'}`}>
                             {ex.difficulty === 'LEVEL_1' ? 'Lvl 1' : ex.difficulty === 'LEVEL_2' ? 'Lvl 2' : 'Lvl 3'}
                           </span>
                       )}
@@ -135,6 +240,13 @@ const LessonBuilder: React.FC<LessonBuilderProps> = ({ content, onStartLesson, o
                     <p className="text-xs text-slate-500 font-medium">
                       {ex.wordIds.length} words selected
                     </p>
+                    {/* HINT FOR LEVEL 3 */}
+                    {ex.type === 'MATCHING' && ex.difficulty === 'LEVEL_3' && ex.wordIds.length > 0 && ex.wordIds.length <= 6 && (
+                        <div className="flex items-center gap-1 text-[10px] text-orange-500 font-bold mt-1">
+                            <AlertCircle size={10} />
+                            Tip: Select 10+ words for dynamic swapping
+                        </div>
+                    )}
                   </div>
                 </div>
 
@@ -153,18 +265,31 @@ const LessonBuilder: React.FC<LessonBuilderProps> = ({ content, onStartLesson, o
                        </select>
                    )}
 
+                    {/* Difficulty Selector for Spelling */}
+                   {ex.type === 'SPELLING' && (
+                       <select 
+                        className="text-xs border border-slate-200 rounded-lg p-1 bg-slate-50 text-slate-700 outline-none focus:ring-2 focus:ring-blue-200 mr-2 cursor-pointer"
+                        value={ex.difficulty || 'LEVEL_1'} 
+                        onChange={(e) => updateExercise(ex.id, { difficulty: e.target.value as SpellingDifficulty })}
+                        onClick={(e) => e.stopPropagation()}
+                       >
+                           <option value="LEVEL_1">Level 1 (Pic + Audio)</option>
+                           <option value="LEVEL_2">Level 2 (Audio Only)</option>
+                       </select>
+                   )}
+
                    {/* Randomize Button Shortcut */}
                    <button 
                     onClick={(e) => {
                       e.stopPropagation();
-                      const count = ex.type === 'MATCHING' ? 6 : 5;
+                      const count = ex.type === 'MATCHING' ? 6 : ex.type === 'SPELLING' ? 3 : 5;
                       randomizeWords(ex.id, count);
                     }}
                     className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg text-xs font-bold flex items-center gap-1"
-                    title={`Pick random words (Default: ${ex.type === 'MATCHING' ? 6 : 5})`}
+                    title={`Pick random words`}
                    >
                      <Shuffle size={14} /> 
-                     <span className="hidden sm:inline">Rand {ex.type === 'MATCHING' ? 6 : 5}</span>
+                     <span className="hidden sm:inline">Rand {ex.type === 'MATCHING' ? 6 : ex.type === 'SPELLING' ? 3 : 5}</span>
                    </button>
 
                    <div className="h-6 w-px bg-slate-200 mx-2"></div>
@@ -205,18 +330,24 @@ const LessonBuilder: React.FC<LessonBuilderProps> = ({ content, onStartLesson, o
           ))}
         </div>
 
-        <div className="p-4 bg-white border-t border-slate-200 grid grid-cols-2 gap-4">
+        <div className="p-4 bg-white border-t border-slate-200 grid grid-cols-3 gap-3">
           <button 
             onClick={() => addExercise('PHONEME')}
-            className="flex items-center justify-center gap-2 py-3 bg-blue-50 text-blue-700 rounded-xl font-bold hover:bg-blue-100 transition-colors border border-blue-200"
+            className="flex flex-col md:flex-row items-center justify-center gap-2 py-3 bg-blue-50 text-blue-700 rounded-xl font-bold hover:bg-blue-100 transition-colors border border-blue-200 text-xs md:text-sm"
           >
-            <Plus size={20} /> Add Phoneme Round
+            <Plus size={18} /> Phoneme
           </button>
           <button 
             onClick={() => addExercise('MATCHING')}
-            className="flex items-center justify-center gap-2 py-3 bg-purple-50 text-purple-700 rounded-xl font-bold hover:bg-purple-100 transition-colors border border-purple-200"
+            className="flex flex-col md:flex-row items-center justify-center gap-2 py-3 bg-purple-50 text-purple-700 rounded-xl font-bold hover:bg-purple-100 transition-colors border border-purple-200 text-xs md:text-sm"
           >
-            <Plus size={20} /> Add Matching Round
+            <Plus size={18} /> Matching
+          </button>
+          <button 
+            onClick={() => addExercise('SPELLING')}
+            className="flex flex-col md:flex-row items-center justify-center gap-2 py-3 bg-orange-50 text-orange-700 rounded-xl font-bold hover:bg-orange-100 transition-colors border border-orange-200 text-xs md:text-sm"
+          >
+            <Plus size={18} /> Spelling
           </button>
         </div>
       </div>

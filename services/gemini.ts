@@ -4,7 +4,7 @@ import { GoogleGenAI, Modality } from "@google/genai";
 // Initialize Gemini Client
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
-export const generateIconForWord = async (word: string): Promise<string> => {
+export const generateIconForWord = async (word: string, language: string = 'Swedish'): Promise<string> => {
   const maxRetries = 2;
   let attempts = 0;
 
@@ -16,7 +16,7 @@ export const generateIconForWord = async (word: string): Promise<string> => {
         contents: {
           parts: [
             {
-              text: `Generate a modern icon representing the meaning of the Swedish word "${word}".
+              text: `Generate a modern icon representing the meaning of the ${language} word "${word}".
 CRITICAL RULES:
 1. No text, letters, or typography in the image.
 2. For abstract words, use a clean, simple symbolic representation.
@@ -60,11 +60,11 @@ export const generatePronunciation = async (text: string): Promise<string> => {
     try {
       const response = await ai.models.generateContent({
         model: "gemini-2.5-flash-preview-tts",
-        contents: [{ parts: [{ text: `Say the Swedish word: ${text}` }] }],
+        contents: [{ parts: [{ text: `Say the word: ${text}` }] }],
         config: {
           // FIXED: Use Modality.AUDIO instead of string "AUDIO"
           responseModalities: [Modality.AUDIO],
-          systemInstruction: "You are a Swedish pronunciation engine. Speak the requested word clearly and naturally.",
+          systemInstruction: "You are a pronunciation engine. Speak the requested word clearly and naturally.",
           speechConfig: {
             voiceConfig: {
               prebuiltVoiceConfig: { voiceName: 'Fenrir' }, 

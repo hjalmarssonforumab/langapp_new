@@ -7,6 +7,8 @@ interface ImageSelectorProps {
   image: string;
   isImageFile: boolean;
   wordContext: string;
+  // NOTE: In a future refactor, we could pass the actual language state here
+  // But for now, we will rely on the text itself or just use the generic prompt update.
   onChange: (image: string, isFile: boolean) => void;
 }
 
@@ -21,6 +23,10 @@ const ImageSelector: React.FC<ImageSelectorProps> = ({ image, isImageFile, wordC
     }
     setGenerating(true);
     try {
+      // For now we assume general or inferred language logic in prompt, 
+      // or we can default to 'the word' if language isn't strictly passed here yet.
+      // The service now accepts a language param, defaulting to Swedish if omitted.
+      // Ideally we prop drill language here too, but simple word context often works for icons.
       const base64Image = await generateIconForWord(wordContext);
       onChange(base64Image, true);
     } catch (e) {

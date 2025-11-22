@@ -9,6 +9,7 @@ export interface GameContent {
   isImageFile: boolean; // True if 'image' is a URL/Base64, False if emoji
   audioBlob: Blob | null;
   category: string;
+  language: string;    // e.g., 'sv-SE', 'ru-RU', 'en-US'
 }
 
 export interface WordChallenge {
@@ -27,12 +28,13 @@ export interface ParsedWord {
   suffix: string;
 }
 
-export type ExerciseType = 'PHONEME' | 'MATCHING';
+export type ExerciseType = 'PHONEME' | 'MATCHING' | 'SPELLING';
 export type MatchingDifficulty = 'LEVEL_1' | 'LEVEL_2' | 'LEVEL_3';
+export type SpellingDifficulty = 'LEVEL_1' | 'LEVEL_2';
 
 export interface ExerciseConfig {
   id: string;
   type: ExerciseType;
   wordIds: string[]; // The specific IDs of words selected for this round
-  difficulty?: MatchingDifficulty; // Only relevant for MATCHING
+  difficulty?: MatchingDifficulty | SpellingDifficulty; // Union of difficulty types
 }
