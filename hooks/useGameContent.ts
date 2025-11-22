@@ -2,57 +2,64 @@
 import { useState, useCallback } from 'react';
 import { GameContent } from '../types';
 import { importDatabase, exportDatabase } from '../services/storageUtils';
+import { generateId } from '../services/idUtils';
 
 export const useGameContent = () => {
   const [content, setContent] = useState<GameContent[]>([]);
   const [isImporting, setIsImporting] = useState(false);
 
-  const addWord = useCallback((newItem: GameContent) => {
+  // --- CREATE ---
+  const addWord = useCallback((itemData: Omit<GameContent, 'id'> | GameContent) => {
+    const newItem: GameContent = {
+        ...itemData,
+        id: 'id' in itemData ? itemData.id : generateId()
+    };
+    
+    console.log("[ContentManager] Adding:", newItem.word);
     setContent(prev => [...prev, newItem]);
   }, []);
 
+  // --- UPDATE ---
   const updateWord = useCallback((updatedItem: GameContent) => {
-    setContent(prev => prev.map(item => String(item.id) === String(updatedItem.id) ? updatedItem : item));
+    console.log("[ContentManager] Updating:", updatedItem.word);
+    setContent(prev => prev.map(item => 
+        String(item.id) === String(updatedItem.id) ? updatedItem : item
+    ));
   }, []);
 
+  // --- DELETE ---
   const deleteWord = useCallback((id: string) => {
-    console.log("Attempting to delete word with ID:", id);
+    console.log("[ContentManager] Deleting ID:", id);
     setContent(prev => {
         const filtered = prev.filter(item => String(item.id) !== String(id));
-        console.log(`Deleted. Prev count: ${prev.length}, New count: ${filtered.length}`);
+        if (filtered.length === prev.length) {
+            console.warn(`[ContentManager] Delete failed: ID ${id} not found.`);
+        }
         return filtered;
     });
   }, []);
 
+  // --- IMPORT (IO) ---
   const importData = useCallback(async (file: File) => {
-    if (content.length > 0 && !window.confirm("Importing will OVERWRITE your current list. Continue?")) {
-      return;
-    }
-
     setIsImporting(true);
     try {
       const newContent = await importDatabase(file);
       setContent(newContent);
-      alert(`Success! Imported ${newContent.length} words.`);
+      return { success: true, count: newContent.length };
     } catch (e: any) {
-      console.error("Import failed", e);
-      alert(`Import failed: ${e.message || "Unknown error"}`);
+      console.error("[ContentManager] Import failed", e);
+      throw e; // Re-throw to let UI handle the specific error message
     } finally {
       setIsImporting(false);
     }
-  }, [content.length]);
+  }, []);
 
+  // --- EXPORT (IO) ---
   const exportData = useCallback(async () => {
     if (content.length === 0) {
-      alert("No data to export.");
-      return;
+      throw new Error("Database is empty");
     }
-    try {
-      await exportDatabase(content);
-    } catch (e) {
-      console.error(e);
-      alert("Export failed.");
-    }
+    await exportDatabase(content);
   }, [content]);
 
   return {

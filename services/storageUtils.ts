@@ -1,5 +1,6 @@
 
 import { GameContent } from '../types';
+import { generateId } from './idUtils';
 
 interface SerializableGameContent extends Omit<GameContent, 'audioBlob'> {
   audioBase64: string | null;
@@ -13,7 +14,7 @@ const blobToBase64 = (blob: Blob): Promise<string> => {
     const reader = new FileReader();
     reader.onloadend = () => {
       const result = reader.result as string;
-      // Remove the Data-URL declaration (e.g., "data:audio/webm;base64,") to just get the base64
+      // Remove the Data-URL declaration
       const base64 = result.split(',')[1];
       resolve(base64);
     };
@@ -102,10 +103,13 @@ export const importDatabase = (file: File): Promise<GameContent[]> => {
              return null;
           }
 
-          // Ensure ID is a unique string. If missing or duplicate, generate a new one.
-          let safeId = String(item.id || Date.now() + index);
+          // Ensure ID is a unique string. Use generateId() if missing.
+          // Check against null/undefined explicitly to allow ID '0' or numeric IDs.
+          let safeId = (item.id !== undefined && item.id !== null) ? String(item.id) : generateId();
+          
+          // Handle duplicates within the file by regenerating ID
           if (seenIds.has(safeId)) {
-              safeId = safeId + '-' + index;
+              safeId = generateId(); 
           }
           seenIds.add(safeId);
 
@@ -123,7 +127,7 @@ export const importDatabase = (file: File): Promise<GameContent[]> => {
             word: item.word,
             highlight: item.highlight || '',
             phonemeDisplay: item.phonemeDisplay || '?',
-            distractors: Array.isArray(item.distractors) ? item.distractors : [], // Ensure array
+            distractors: Array.isArray(item.distractors) ? item.distractors : [], 
             image: item.image || '',
             isImageFile: !!item.isImageFile,
             category: item.category || 'custom',

@@ -2,7 +2,8 @@
 import React, { useState, useEffect } from 'react';
 import { GameContent } from '../../types';
 import { parseBracketedWord } from '../../services/wordUtils';
-import { Edit2, Plus, Save, Trash2, X, BookOpen, Image as ImageIcon } from 'lucide-react';
+import { generateId } from '../../services/idUtils';
+import { Edit2, Plus, Save, Trash2, X, BookOpen, Image as ImageIcon, AlertCircle } from 'lucide-react';
 import AudioRecorder from './AudioRecorder';
 import ImageSelector from './ImageSelector';
 
@@ -28,7 +29,9 @@ const WordEditor: React.FC<WordEditorProps> = ({ initialData, onSave, onDelete, 
   
   // UI Helper
   const [customDistractor, setCustomDistractor] = useState('');
+  const [validationError, setValidationError] = useState<string | null>(null);
 
+  // Reset form when selection changes
   useEffect(() => {
     if (initialData) {
       const prefix = initialData.word.substring(0, initialData.word.indexOf(initialData.highlight));
@@ -41,26 +44,32 @@ const WordEditor: React.FC<WordEditorProps> = ({ initialData, onSave, onDelete, 
       setImageInput(initialData.image);
       setIsImageFile(initialData.isImageFile);
       setAudioBlob(initialData.audioBlob);
+      setValidationError(null);
     } else {
+      // NEW WORD STATE
       setWordInput('');
       setPhonemeDisplay('');
       setDistractors([]);
       setImageInput('');
       setIsImageFile(false);
       setAudioBlob(null);
+      setValidationError(null);
     }
   }, [initialData]);
 
   const handleSave = () => {
-    if (!wordInput || !phonemeDisplay || !imageInput || !audioBlob) {
-      alert("Please fill in all fields (Word, Phoneme, Image, Audio).");
-      return;
-    }
+    setValidationError(null);
+
+    // Validation
+    if (!wordInput.trim()) return setValidationError("Word text is missing.");
+    if (!phonemeDisplay.trim()) return setValidationError("Phoneme is missing.");
+    if (!imageInput) return setValidationError("Image is missing.");
+    if (!audioBlob) return setValidationError("Audio recording is missing.");
 
     const parsed = parseBracketedWord(wordInput);
     
     const newItem: GameContent = {
-      id: initialData?.id || Date.now().toString(),
+      id: initialData?.id || generateId(), // Generate reliable ID for new items
       word: parsed.fullWord,
       highlight: parsed.highlight,
       phonemeDisplay: phonemeDisplay,
@@ -71,6 +80,7 @@ const WordEditor: React.FC<WordEditorProps> = ({ initialData, onSave, onDelete, 
       category: 'custom'
     };
 
+    console.log("Saving item:", newItem);
     onSave(newItem);
   };
 
@@ -87,13 +97,12 @@ const WordEditor: React.FC<WordEditorProps> = ({ initialData, onSave, onDelete, 
   };
 
   const handleDeleteClick = (e: React.MouseEvent) => {
-    // Prevent form submission or parent bubbling
     e.preventDefault();
     e.stopPropagation();
 
     if (!initialData) return;
 
-    const confirmed = window.confirm(`Are you sure you want to permanently delete "${initialData.word}"? This cannot be undone.`);
+    const confirmed = window.confirm(`Are you sure you want to delete "${initialData.word}"?`);
     if (confirmed) {
         onDelete(initialData.id);
     }
@@ -109,10 +118,10 @@ const WordEditor: React.FC<WordEditorProps> = ({ initialData, onSave, onDelete, 
                 </div>
                 <div>
                     <h2 className="text-lg font-bold text-slate-800 leading-tight">
-                        {initialData ? 'Edit Word' : 'Create Word'}
+                        {initialData ? 'Edit Word' : 'Create New Word'}
                     </h2>
                     <p className="text-[10px] text-slate-400 font-medium uppercase tracking-wide">
-                        {initialData ? `ID: ${initialData.id.slice(0,6)}...` : 'New Entry'}
+                        {initialData ? 'Update existing entry' : 'Add to database'}
                     </p>
                 </div>
             </div>
@@ -143,10 +152,18 @@ const WordEditor: React.FC<WordEditorProps> = ({ initialData, onSave, onDelete, 
                     className="px-6 py-2 text-white rounded-lg font-bold shadow-md bg-slate-900 hover:bg-slate-800 hover:scale-105 transition-all flex items-center gap-2 text-sm"
                 >
                     <Save size={18} />
-                    Save
+                    {initialData ? 'Update' : 'Save'}
                 </button>
             </div>
         </div>
+
+        {/* Validation Error Banner */}
+        {validationError && (
+            <div className="bg-red-50 border-b border-red-100 px-6 py-3 flex items-center gap-2 text-red-600 text-sm font-bold animate-in slide-in-from-top-2">
+                <AlertCircle size={16} />
+                {validationError}
+            </div>
+        )}
 
         {/* Scrollable Content */}
         <div className="flex-1 overflow-y-auto p-4 md:p-6">
@@ -212,7 +229,7 @@ const WordEditor: React.FC<WordEditorProps> = ({ initialData, onSave, onDelete, 
                                             <button onClick={() => removeDistractor(d)} className="text-slate-400 hover:text-red-500"><X size={14}/></button>
                                         </span>
                                     ))}
-                                    {distractors.length === 0 && <span className="text-xs text-slate-400 italic p-1">None selected</span>}
+                                    {distractors.length === 0 && <span className="text-xs text-slate-400 italic p-1">None selected (Defaults will vary)</span>}
                                 </div>
 
                                 <div className="flex gap-2 mb-3">
